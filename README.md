@@ -27,10 +27,9 @@ Ensure you have the following installed on your local machine:
 1. Clone this repository.
 
 ```bash
-git clone https://github.com/your-repository
+git clone https://github.com/markoskandylis/gitlab-cdk.git
 
-cd your-repository
+cd repo-dir
 npm install
 cdk deploy --all
-
 
