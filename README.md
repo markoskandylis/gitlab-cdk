@@ -22,14 +22,34 @@ Ensure you have the following installed on your local machine:
 3. AWS CLI - version 2.x or higher
 4. A valid AWS account and your AWS credentials configured on your local machine. See the [official guide](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html) for more information.
 
+## Environment Variables
+
+This project relies on the following environment variables that you will need to set:
+
+- `AWS_ACCOUNT_ID`: Your AWS Account ID
+- `AWS_REGION`: The AWS Region where the stack will be deployed
+- `GITLAB_ROOT_PASSWORD`: The password to be used for the root user in GitLab
+
+You can export these environment variables in your shell:
+
+```bash
+export AWS_ACCOUNT_ID=YourAwsAccountId
+export AWS_REGION=YourAwsRegion
+export GITLAB_ROOT_PASSWORD=YourGitlabRootPassword
+```
 ### Deploying the project
 
-1. Clone this repository.
+After exporting the necessary environment variables, you can deploy the project by running:
 
 ```bash
 git clone https://github.com/markoskandylis/gitlab-cdk.git
-
 cd repo-dir
 npm install
 cdk deploy --all
 
+```
+### Deploying the project
+## gitlab-infra-stack
+This stack deploys the base VPC for the GitLab environment.
+## gitlab-infra-stack
+This stack deploys GitLab in the VPC created by gitlab-infra-stack, it also creates a load balancer and a Windows Bastion Host for access to the GitLab instance.
