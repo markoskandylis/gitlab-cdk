@@ -13,7 +13,6 @@ export class GitlabStack extends cdk.Stack {
     super(scope, id, props);
 
     // Creating load balancers Sercurity group
-
     const lbSecurityGroup = new ec2.SecurityGroup(this, "LBSecurityGroup", {
       vpc: props.gitlabVPC,
       allowAllOutbound: true,
@@ -21,9 +20,97 @@ export class GitlabStack extends cdk.Stack {
       securityGroupName: "gitlab-loadbalancer-sec-group",
     });
 
+    // Adding ingress roles for the security group
     lbSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80));
     lbSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(22));
     lbSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443));
+
+    // Creating UserData for the gitlab instance
+    const gitlabUserData = ec2.UserData.forLinux();
+
+    const gitlabInstanceRole = new iam.Role(this, "GitlabInstanceRole", {
+      assumedBy: new iam.ServicePrincipal("ec2.amazonaws.com"),
+    });
+
+    // Roles that we attache to the gitlab instance and windows bastion for ssm
+    const gitlabInstacnePolicies = ["AmazonSSMManagedInstanceCore"];
+
+    for (let policy of gitlabInstacnePolicies) {
+      gitlabInstanceRole.addManagedPolicy(
+        iam.ManagedPolicy.fromAwsManagedPolicyName(policy)
+      );
+    }
+
+    // Creating the launch template for the gitlab instance
+    const gitlabTemplate = new ec2.LaunchTemplate(this, "GitlabEc2Template", {
+      machineImage: ec2.MachineImage.latestAmazonLinux2023(),
+      instanceType: ec2.InstanceType.of(
+        ec2.InstanceClass.BURSTABLE3,
+        ec2.InstanceSize.LARGE
+      ),
+      securityGroup: lbSecurityGroup,
+      userData: gitlabUserData,
+      role: gitlabInstanceRole,
+      blockDevices: [{
+        deviceName: '/dev/xvda',
+        volume: ec2.BlockDeviceVolume.ebs(100),  // 100 GB EBS volume
+      }],
+    });
+
+    /* 
+      Creating the gitlab autoscaling group
+    */
+
+    const gitlabasg = new asg.AutoScalingGroup(this, "GitlabASG", {
+      vpc: props.gitlabVPC,
+      desiredCapacity: 1,
+
+      launchTemplate: gitlabTemplate,
+    });
+
+    // Creating the windows bastion host to log in to gitlab
+    const bastionHostWindows = new ec2.Instance(this, 'BastionHostWindows', {
+      vpc: props.gitlabVPC,
+      instanceName: 'BastionHostWindows',
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MEDIUM),
+      machineImage: new ec2.WindowsImage(ec2.WindowsVersion.WINDOWS_SERVER_2019_ENGLISH_FULL_BASE),
+      role: gitlabInstanceRole,
+    });
+
+  
+    /*
+      Deploying the load balancer for gitlab
+    */
+   
+    const lb = new elbv2.ApplicationLoadBalancer(this, "LB", {
+      vpc: props.gitlabVPC,
+      internetFacing: false,
+      loadBalancerName: "gitlab-loadbalancer",
+      securityGroup: lbSecurityGroup,
+    });
+
+    const ports = [80];
+    for (let port of ports) {
+      const listener = lb.addListener(`Listener-${port}`, {
+        port: port,
+        protocol:
+          port === 80
+            ? elbv2.ApplicationProtocol.HTTP
+            : port === 443
+            ? elbv2.ApplicationProtocol.HTTPS
+            : undefined,
+      });
+
+      listener.addTargets(`Target-${port}`, {
+        port: 80,
+        targets: [gitlabasg],
+      });
+    };
+
+    /*
+      Creating docker compose for this example we will just use the lb dns name and we will not create
+      Route 53 record
+    */
 
     const dockerComposeYml = `
     version: '3.6'
@@ -34,8 +121,9 @@ export class GitlabStack extends cdk.Stack {
         hostname: 'gitlab.test.stinky-badger.net'
         environment:
           GITLAB_OMNIBUS_CONFIG: |
-            external_url 'http://-------'
             # Add any other gitlab.rb configuration here, each on its own line
+            external_url 'http://${lb.loadBalancerDnsName}'
+            gitlab_rails['initial_root_password'] = 'adminadmin'
         ports:
           - '80:80'
           - '2022:22'
@@ -46,8 +134,6 @@ export class GitlabStack extends cdk.Stack {
         shm_size: '256m'
     `;
 
-    // The code that defines your stack goes here
-    const gitlabUserData = ec2.UserData.forLinux();
     gitlabUserData.addCommands(
       // Update the installed packages and package cache
       "yum update -y",
@@ -83,74 +169,5 @@ export class GitlabStack extends cdk.Stack {
       // Start GitLab
       "cd $GITLAB_HOME && docker-compose up -d"
     );
-
-    const gitlabInstanceRole = new iam.Role(this, "GitlabInstanceRole", {
-      assumedBy: new iam.ServicePrincipal("ec2.amazonaws.com"),
-    });
-
-    const gitlabInstacnePolicies = ["AmazonSSMManagedInstanceCore"];
-
-    for (let policy of gitlabInstacnePolicies) {
-      gitlabInstanceRole.addManagedPolicy(
-        iam.ManagedPolicy.fromAwsManagedPolicyName(policy)
-      );
-    }
-
-    const gitlabTemplate = new ec2.LaunchTemplate(this, "GitlabEc2Template", {
-      machineImage: ec2.MachineImage.latestAmazonLinux2022(),
-      instanceType: ec2.InstanceType.of(
-        ec2.InstanceClass.BURSTABLE3,
-        ec2.InstanceSize.LARGE
-      ),
-      securityGroup: lbSecurityGroup,
-      userData: gitlabUserData,
-      role: gitlabInstanceRole,
-      blockDevices: [{
-        deviceName: '/dev/xvda',  // Replace with your root device name if it's not '/dev/xvda'
-        volume: ec2.BlockDeviceVolume.ebs(100),  // 100 GB EBS volume
-      }],
-    });
-
-    const gitlabasg = new asg.AutoScalingGroup(this, "GitlabASG", {
-      vpc: props.gitlabVPC,
-      desiredCapacity: 1,
-      launchTemplate: gitlabTemplate,
-    });
-
-    const bastionHostWindows = new ec2.Instance(this, 'BastionHostWindows', {
-      vpc: props.gitlabVPC,
-      instanceName: 'BastionHostWindows',
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MEDIUM),
-      machineImage: new ec2.WindowsImage(ec2.WindowsVersion.WINDOWS_SERVER_2019_ENGLISH_FULL_BASE),
-      role: gitlabInstanceRole,
-    });
-
-  
-    // deploy classic loadbalancer using cdk for the github
-
-    const lb = new elbv2.ApplicationLoadBalancer(this, "LB", {
-      vpc: props.gitlabVPC,
-      internetFacing: false,
-      loadBalancerName: "gitlab-loadbalancer",
-      securityGroup: lbSecurityGroup,
-    });
-
-    const ports = [80];
-    for (let port of ports) {
-      const listener = lb.addListener(`Listener-${port}`, {
-        port: port,
-        protocol:
-          port === 80
-            ? elbv2.ApplicationProtocol.HTTP
-            : port === 443
-            ? elbv2.ApplicationProtocol.HTTPS
-            : undefined,
-      });
-
-      listener.addTargets(`Target-${port}`, {
-        port: 80,
-        targets: [gitlabasg],
-      });
-    }
   }
 }
