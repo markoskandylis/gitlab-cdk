@@ -5,9 +5,9 @@ This repository contains the CDK (Cloud Development Kit) TypeScript code that se
 ## Project structure
 
 This project is organized into three primary parts:
-- The `GitlabInfraStack` is responsible for setting up the underlying AWS infrastructure that includes a VPC (Virtual Private Cloud) and its related networking components.
-- The `GitlabStack` deploys the actual GitLab service and a windows bastion host within the VPC, along with the necessary security groups, IAM roles, and autoscaling groups.
-- The `deployment` file is the entry point of the application and it is responsible for deploying the stacks in the desired AWS account and region.
+- The `gitlab-infra-stack.ts` is responsible for setting up the underlying AWS infrastructure that includes a VPC (Virtual Private Cloud) and its related networking components.
+- The `gitlab-stack.ts` deploys the actual GitLab service and a windows bastion host within the VPC, along with the necessary security groups, IAM roles, and autoscaling groups.
+- The `gitlab.ts` file is the entry point of the application and it is responsible for deploying the stacks in the desired AWS account and region.
 
 ## Getting Started
 
