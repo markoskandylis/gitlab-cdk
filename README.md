@@ -46,10 +46,4 @@ git clone https://github.com/markoskandylis/gitlab-cdk.git
 cd repo-dir
 npm install
 cdk deploy --all
-
 ```
-### Deploying the project
-## gitlab-infra-stack
-This stack deploys the base VPC for the GitLab environment.
-## gitlab-infra-stack
-This stack deploys GitLab in the VPC created by gitlab-infra-stack, it also creates a load balancer and a Windows Bastion Host for access to the GitLab instance.
