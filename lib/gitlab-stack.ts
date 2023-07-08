@@ -120,10 +120,8 @@ export class GitlabStack extends cdk.Stack {
         restart: always
         hostname: 'gitlab.test.stinky-badger.net'
         environment:
-          GITLAB_OMNIBUS_CONFIG: |
-            # Add any other gitlab.rb configuration here, each on its own line
-            external_url 'http://${lb.loadBalancerDnsName}'
-            gitlab_rails['initial_root_password'] = 'adminadmin'
+          GITLAB_ROOT_PASSWORD: "${process.env.GITLAB_ROOT_PASSWORD}"
+          EXTERNAL_URL: 'http://${lb.loadBalancerDnsName}'
         ports:
           - '80:80'
           - '2022:22'
